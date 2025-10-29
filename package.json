@@ -1,0 +1,27 @@
+{
+  "name": "@trust/core",
+  "version": "1.0.0",
+  "description": "Trust Core - Platform-agnostic trust and identity management",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "clean": "find . -name '*.js' -not -path './node_modules/*' -not -path './packages/*' -delete"
+  },
+  "exports": {
+    "./models/*": "./models/*",
+    "./types/*": "./types/*",
+    "./handlers/*": "./handlers/*",
+    "./services/*": "./services/*"
+  },
+  "author": "lama.one Team",
+  "license": "MIT",
+  "private": true,
+  "dependencies": {
+    "@refinio/one.core": "file:../packages/one.core",
+    "@refinio/one.models": "file:../packages/one.models"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}
