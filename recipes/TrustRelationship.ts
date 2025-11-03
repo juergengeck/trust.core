@@ -82,7 +82,7 @@ export const TrustRelationshipRecipe: Recipe = {
     rule: [
         {
             itemprop: 'peer',
-            itemtype: { type: 'idHash', allowedTypes: new Set(['Person']) }
+            itemtype: { type: 'referenceToId', allowedTypes: new Set(['Person']) }
         },
         {
             itemprop: 'peerPublicKey',
@@ -99,7 +99,7 @@ export const TrustRelationshipRecipe: Recipe = {
         },
         {
             itemprop: 'permissions',
-            itemtype: { type: 'object' },
+            itemtype: { type: 'stringifiable' },  // JSON-serializable object
             optional: true
         },
         {
@@ -133,7 +133,7 @@ export const TrustRelationshipRecipe: Recipe = {
         },
         {
             itemprop: 'verificationProof',
-            itemtype: { type: 'hash' },
+            itemtype: { type: 'string' },  // Store hash as string
             optional: true
         }
     ]
