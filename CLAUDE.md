@@ -1,309 +1,179 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code when working with trust.core.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Overview
 
 **trust.core** is a platform-agnostic trust and identity management library for LAMA applications. It provides device identity, key management, and trust relationships built on the ONE platform.
 
-## Architecture: Build-Time vs Runtime Dependencies
-
-### Key Principle
-
-trust.core imports from `@refinio/one.core` and `@refinio/one.models` at **build-time only**. Consuming projects (lama, lama.electron, lama.browser) supply these dependencies at **runtime**.
-
-```
-BUILD TIME (TypeScript compilation):
-  trust.core/tsconfig.json → @refinio/* resolves to ./packages/*
-  → TypeScript compiles successfully using local types
-
-RUNTIME:
-  lama imports trust.core
-  → lama's one.core/one.models instances are used
-  → Single runtime instance (no duplicates)
-```
-
-### Directory Structure
+## Directory Structure
 
 ```
 trust.core/
-├── packages/              # Build-time only (NOT included in runtime)
-│   ├── one.core/          # @refinio/one.core@0.6.1-beta-3 (symlink)
-│   └── one.models/        # @refinio/one.models@14.1.0-beta-5 (symlink)
+├── packages/              # Build-time dependencies (symlinks to ../packages/)
+│   ├── one.core/          # @refinio/one.core@0.6.1-beta-3
+│   └── one.models/        # @refinio/one.models@14.1.0-beta-5
 ├── models/                # Trust models
-│   └── TrustModel.ts      # Core trust management
+│   └── TrustModel.ts      # Core trust management with ONE.core integration
 ├── types/                 # Type definitions
 │   └── trust-types.ts     # Trust interfaces and types
-├── handlers/              # RPC-style handlers
-│   └── TrustHandler.ts    # Transport-agnostic handler
-├── services/              # Future: high-level trust services
-└── package.json           # No dependencies on one.core/one.models
+├── recipes/               # ONE.core recipe definitions
+│   ├── TrustRelationship.ts     # Versioned trust relationship objects
+│   ├── GroupAttestation.ts      # Unversioned group membership certificates
+│   └── CertificateRegistry.ts   # Versioned certificate storage
+├── plans/                 # RPC-style plans
+│   └── TrustPlan.ts       # Transport-agnostic trust plan
+└── services/              # Future: high-level trust services
 ```
 
-## Dependencies
+## Build System
 
-### package.json
+**Dependencies Note**: package.json has file: references to `@refinio/one.core` and `@refinio/one.models` located in `../packages/`. TypeScript resolves these via tsconfig.json paths. Consuming projects should use their own instances at runtime to ensure a single shared instance across the application.
 
-```json
-{
-  "dependencies": {}
-  // NO @refinio/one.core or @refinio/one.models
-  // Consuming projects supply these at runtime
-}
+### Commands
+
+```bash
+npm install     # Install devDependencies only (TypeScript)
+npm run build   # Compile TypeScript (output co-located with source)
+npm run watch   # Watch mode for development
+npm run clean   # Remove generated .js files (excluding node_modules and packages)
 ```
 
-### Why No Dependencies?
-
-- **Avoid duplicate modules**: Consuming projects have their own one.core/one.models
-- **Platform-agnostic**: trust.core doesn't choose which platform implementation to use
-- **Single runtime instance**: Only the consuming project's instance is loaded
-
-### TypeScript Resolution
-
-**tsconfig.json**:
-```json
-{
-  "paths": {
-    "@refinio/*": ["./packages/*"]  // Build-time only
-  }
-}
-```
-
-TypeScript finds types in `./packages/*` during compilation, but these are NOT bundled or included at runtime.
+**Note**: No `dist/` directory - compiled JavaScript is co-located with source files.
 
 ## Core Components
 
-### TrustModel
+### TrustModel (models/TrustModel.ts)
 
-The main trust management model implementing the ONE.models Model interface:
+Main trust management model implementing the ONE.models Model interface with ONE.core storage:
 
 **Features**:
-- Device identity management with secure keychain integration
-- Trust relationship database (trusted/untrusted/pending/revoked)
-- Persistent storage via injected storage adapter
-- Crypto API integration for signing operations
+- Device identity from ONE.core keychain (SHA256IdHash<Person>)
+- Trust relationships stored as ONE.core versioned objects (TrustRelationship)
+- Integration with TrustedKeysManager for certificate validation
+- Combined trust evaluation (relationship status + certificate validation)
 - Event-driven updates (onTrustChanged, onCredentialsUpdated)
+- StateMachine lifecycle (Uninitialised → Initialised)
 
-**Usage Pattern** (in consuming apps):
+**Usage Pattern**:
 ```typescript
 import { TrustModel } from '@trust/core/models/TrustModel.js';
-import type { TrustStorageAdapter } from '@trust/core/types/trust-types.js';
-
-// Platform-specific storage adapter
-const storageAdapter: TrustStorageAdapter = {
-  async getItem(key: string) { /* ... */ },
-  async setItem(key: string, value: string) { /* ... */ },
-  async removeItem(key: string) { /* ... */ }
-};
 
 // Create model with injected dependencies
-const trustModel = new TrustModel(leuteModel, storageAdapter);
+const trustModel = new TrustModel(leuteModel, trustedKeysManager);
 await trustModel.init();
+
+// Set trust (stores TrustRelationship object in ONE.core)
+await trustModel.setTrustStatus(peerPersonId, peerPublicKey, 'trusted', options);
+
+// Evaluate trust (combines relationship + certificates)
+const evaluation = await trustModel.evaluateTrust(peerPersonId, 'communication');
+// Returns: { level: 0-1, confidence: 0-1, reason: string }
 ```
 
-### TrustHandler
+### Recipes (recipes/)
 
-RPC-style handler for transport-agnostic trust operations:
+ONE.core recipe definitions for trust-related objects:
 
-**Request/Response Pattern**:
+**TrustRelationship** (versioned):
+- Stores trust status for a person/device
+- Indexed by `peer` for fast lookups via reverse maps
+- Can be posted to channels, signed to create certificates, exported as VCs
+- Fields: peer, peerPublicKey, status, trustLevel, permissions, timestamps, verification metadata
+
+**GroupAttestation** (unversioned certificate):
+- Attests to group membership
+- Created by group owner, distributed to members
+- Fields: groupId, groupHash, members[], issuer, validity period
+
+**CertificateRegistry** (versioned with id):
+- Stores certificate hashes for audit trail
+- Versioned for complete history
+- Fields: id, certificates[]
+
+### TrustPlan (plans/TrustPlan.ts)
+
+RPC-style plan for transport-agnostic trust operations. Wraps TrustModel methods in request/response pattern for cross-platform use.
+
+**Key Methods**: setTrustStatus, getTrustStatus, getTrustedDevices, verifyDeviceKey, evaluateTrust, getDeviceCredentials
+
+### Types (types/trust-types.ts)
+
+Core type definitions: DeviceCredentials, TrustStatus, TrustEntry, TrustLevel, TrustEvaluation, TrustPermissions
+
+## Integration Architecture
+
+### Storage Layer
+
+TrustModel uses ONE.core's object storage:
+- **storeVersionedObject()** - Store TrustRelationship objects
+- **getAllEntries()** - Query relationships via reverse maps
+- **Keychain** - Device credentials (SHA256IdHash<Person>, public/private keys)
+- **Crypto API** - Sign/verify without exposing private keys
+
+### Certificate Validation
+
+TrustedKeysManager integration:
+- **getKeyTrustInfo()** - Validate keys via TrustKeysCertificate chain
+- Returns: { trusted: boolean, reason: string, certificates: [...] }
+- Trust evaluation combines relationship status + certificate validation
+
+### Recipe Registration
+
+Recipes must be registered with ONE.core before use. Export from package:
 ```typescript
-import { TrustHandler } from '@trust/core/handlers/TrustHandler.js';
-
-const handler = new TrustHandler(trustModel);
-
-// Set trust status
-const result = await handler.setTrustStatus({
-  deviceId: somePersonId,
-  publicKey: 'ed25519_public_key',
-  status: 'trusted'
-});
-
-// Evaluate trust
-const evaluation = await handler.evaluateTrust({
-  personId: somePersonId,
-  context: 'communication'
-});
+export { TrustRelationshipRecipe, TrustRelationshipReverseMap } from './recipes/TrustRelationship.js';
+export { GroupAttestationRecipe, GroupAttestationReverseMap } from './recipes/GroupAttestation.js';
+export { CertificateRegistryRecipe, CertificateRegistryReverseMap } from './recipes/CertificateRegistry.js';
 ```
 
-**Methods**:
-- `setTrustStatus()` - Add/update trust relationships
-- `getTrustStatus()` - Query trust status
-- `getTrustedDevices()` - List all trusted devices
-- `verifyDeviceKey()` - Verify public key
-- `evaluateTrust()` - Calculate trust level with confidence
-- `getDeviceCredentials()` - Get own device credentials
+## Trust Evaluation Algorithm
 
-### Trust Types
+Trust scoring combines multiple factors:
 
-Comprehensive type definitions in `types/trust-types.ts`:
+1. **Status-based score**: trusted=0.9, pending=0.3, untrusted=0.1, revoked=0.0
+2. **Certificate validation**: TrustedKeysManager checks TrustKeysCertificate (boosts confidence +0.2)
+3. **Recency**: Recent verification (<7 days) boosts confidence +0.1, stale (>30 days) reduces -0.1
+4. **Context modifiers**: 'file-transfer' requires higher threshold, 'communication' accepts standard
+5. **Result**: { level: 0-1, confidence: 0-1, reason: string }
 
-- **DeviceCredentials** - Device identity and keys
-- **TrustStatus** - 'trusted' | 'untrusted' | 'pending' | 'revoked'
-- **TrustEntry** - Trust relationship record
-- **TrustLevel** - 'full' | 'limited' | 'temporary'
-- **TrustEvaluation** - Trust score with confidence
-- **TrustPermissions** - Fine-grained access control
-- **TrustStorageAdapter** - Platform-specific persistence interface
+## Trust Establishment Methods
 
-## Building trust.core
+1. **QR Code Pairing** - Exchange keys, create TrustRelationship with status='trusted', issue certificate
+2. **Mutual Contacts** - 3+ shared contacts enables automatic limited trust
+3. **Organizational Policy** - Same domain/org with admin certificate chain
+4. **Video Call Verification** - Human verification for high-confidence trust
+5. **Certificate Only** - Valid TrustKeysCertificate from trusted issuer (requires user approval)
 
-```bash
-npm install     # Installs devDependencies only
-npm run build   # Compiles TypeScript using ./packages/* for types
-npm run watch   # Watch mode for development
-npm run clean   # Clean generated JS files
-```
+## Key Implementation Details
 
-**Note**: Compiled output is co-located with source files (no dist/ directory).
+### Branded Types
+SHA256Hash and SHA256IdHash are branded string types (strings with type safety). Don't treat them as regular strings in type annotations.
 
-## Consuming trust.core
+### StateMachine Lifecycle
+TrustModel uses StateMachine: Uninitialised → init event → Initialised → shutdown event → Uninitialised
 
-Projects use trust.core via `file:` reference:
+### Querying Trust Relationships
+Use reverse maps: `getAllEntries(TrustRelationshipReverseMap, peerPersonId)` to find TrustRelationship objects by peer.
 
-```json
-// lama/package.json
-{
-  "dependencies": {
-    "@trust/core": "file:../trust.core",
-    "@refinio/one.core": "file:../lama.core/packages/one.core",
-    "@refinio/one.models": "file:../lama.core/packages/one.models"
-  }
-}
-```
+### Recipe Version Patterns
+- **Versioned objects**: Have `$version$` field (TrustRelationship, CertificateRegistry)
+- **Versioned with ID**: Have `id` field with `isId: true` (CertificateRegistry)
+- **Unversioned**: No version field (GroupAttestation - certificates)
 
-At runtime:
-- lama loads its own one.core/one.models
-- trust.core models use those instances (single instance across app)
+## Current Status
 
-## Platform Integration Examples
+**Completed**: TrustRelationship, GroupAttestation, CertificateRegistry recipes; TrustModel with ONE.core storage; TrustPlan; Architecture docs
 
-### React Native (lama)
+**In Progress**: Recipe registration, TrustedKeysManager method name fix (keyTrustInfo → getKeyTrustInfo), TypeScript build fixes, proper object querying pattern
 
-```typescript
-// Adapter for AsyncStorage
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { TrustStorageAdapter } from '@trust/core/types/trust-types.js';
+**TODO**: VC generation (exportTrustChainAsVC), comprehensive testing, certificate issuance on trust establishment
 
-const reactNativeStorageAdapter: TrustStorageAdapter = {
-  async getItem(key: string) {
-    return await AsyncStorage.getItem(key);
-  },
-  async setItem(key: string, value: string) {
-    await AsyncStorage.setItem(key, value);
-  },
-  async removeItem(key: string) {
-    await AsyncStorage.removeItem(key);
-  }
-};
-
-// Create trust model
-import { TrustModel } from '@trust/core/models/TrustModel.js';
-const trustModel = new TrustModel(leuteModel, reactNativeStorageAdapter);
-```
-
-### Electron (lama.electron)
-
-```typescript
-// Adapter for electron-store or localStorage
-import type { TrustStorageAdapter } from '@trust/core/types/trust-types.js';
-
-const electronStorageAdapter: TrustStorageAdapter = {
-  async getItem(key: string) {
-    return localStorage.getItem(key);
-  },
-  async setItem(key: string, value: string) {
-    localStorage.setItem(key, value);
-  },
-  async removeItem(key: string) {
-    localStorage.removeItem(key);
-  }
-};
-```
-
-### Browser (lama.browser)
-
-```typescript
-// Adapter for IndexedDB or localStorage
-const browserStorageAdapter: TrustStorageAdapter = {
-  async getItem(key: string) {
-    return localStorage.getItem(key);
-  },
-  async setItem(key: string, value: string) {
-    localStorage.setItem(key, value);
-  },
-  async removeItem(key: string) {
-    localStorage.removeItem(key);
-  }
-};
-```
-
-## Trust Model Concepts
-
-### Device Identity
-
-Each device (app instance) has:
-- **Device ID**: SHA256IdHash<Person> from ONE.core
-- **Public Key**: Ed25519 signing key
-- **Crypto API**: For signing without exposing private key
-
-### Trust Relationships
-
-Trust is tracked per device/person with:
-- **Status**: trusted, untrusted, pending, revoked
-- **Public Key**: Verified cryptographic identity
-- **Timestamps**: When established and last verified
-- **Persistence**: Saved to platform-specific storage
-
-### Trust Evaluation
-
-Sophisticated trust scoring considering:
-- Trust status (trusted = 0.9, pending = 0.3, etc.)
-- Verification recency (boost confidence for recent verifications)
-- Context (general, file-transfer, communication)
-- Returns level (0.0-1.0) and confidence (0.0-1.0)
-
-## Version Synchronization
-
-All projects use synchronized versions:
-
-```
-Current versions:
-- @refinio/one.core:   0.6.1-beta-3
-- @refinio/one.models: 14.1.0-beta-5
-```
-
-When updating:
-1. Update trust.core/packages/ symlinks
-2. Update all consuming projects
-3. Test across all platforms
-
-## Engineering Principles
-
-From ~/.claude/CLAUDE.md:
-- **No fallbacks**: Fail fast and throw - fix problems, don't mitigate
-- **No delays**: Operations should be immediate or properly async
-- **Use what you have**: Don't create redundant abstractions
-- **Fix, do not mitigate**: Understand before implementing
-- **SHA256Hash and SHA256IdHash are branded types**: Strings with type safety
+See README.md for detailed status and ARCHITECTURE.md for complete design.
 
 ## Related Documentation
 
-- `../instance-trust.md` - Trust model architecture and protocols
-- `../lama.core/CLAUDE.md` - Lama core architecture patterns
-- `../chat.core/CLAUDE.md` - Chat core architecture patterns
-
-## Future Enhancements
-
-### Planned Features
-- **TrustService** - High-level trust operations and policies
-- **Trust chain verification** - Multi-hop trust paths
-- **Organizational trust policies** - Domain-based automatic trust
-- **External verifications** - Video calls, shared contacts, etc.
-- **Time-based trust decay** - Reduce trust over time without interaction
-- **Place-based trust** - Geographic verification (when implemented)
-
-### Extensibility
-- Custom trust evaluation algorithms
-- Pluggable verification methods
-- Trust certificate issuance
-- Notary integration for trust chains
+- `ARCHITECTURE.md` - Complete trust architecture and design patterns
+- `README.md` - Project status, TODO items, integration points
+- `../instance-trust.md` - App-to-app trust protocols
+- `../lama.core/CLAUDE.md` - Lama core architecture

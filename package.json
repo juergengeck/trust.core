@@ -11,7 +11,7 @@
   "exports": {
     "./models/*": "./models/*",
     "./types/*": "./types/*",
-    "./handlers/*": "./handlers/*",
+    "./plans/*": "./plans/*",
     "./services/*": "./services/*"
   },
   "author": "lama.one Team",

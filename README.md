@@ -35,8 +35,8 @@ Trust.core has been extracted from the lama app and architecturally redesigned t
    - TrustLevel, TrustEvaluation, TrustPermissions
    - Platform adapters (now deprecated - using ONE.core)
 
-5. **TrustHandler** (`handlers/TrustHandler.ts`)
-   - RPC-style handler for platforms
+5. **TrustPlan** (`plans/TrustPlan.ts`)
+   - RPC-style plan for platforms
    - Request/Response pattern
 
 ### 🚧 TODO: Remaining Work
@@ -60,7 +60,7 @@ Trust.core has been extracted from the lama app and architecturally redesigned t
    - Issue TrustKeysCertificate on trust establishment
 
 4. **Build Fixes**
-   - Fix TypeScript errors in TrustHandler (async methods)
+   - Fix TypeScript errors in TrustPlan (async methods)
    - Fix recipe definition (proper types for idHash, hash, object)
    - Fix module augmentation
 
@@ -138,8 +138,8 @@ const isValid = await trustModel.verifyDeviceKey(
 
 ### Platforms
 - **lama** (React Native) - Will use trust.core via AppModel
-- **lama.electron** - Will use trust.core + TrustHandler
-- **lama.browser** - Will use trust.core + TrustHandler
+- **lama.electron** - Will use trust.core + TrustPlan
+- **lama.browser** - Will use trust.core + TrustPlan
 
 ## Why This Approach?
 
@@ -181,8 +181,8 @@ trust.core/
 │   └── trust-types.ts       # Type definitions
 ├── recipes/
 │   └── TrustRelationship.ts # ONE.core recipe
-└── handlers/
-    └── TrustHandler.ts      # RPC handler
+└── plans/
+    └── TrustPlan.ts         # RPC plan
 ```
 
 ## Related Documentation

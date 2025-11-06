@@ -20,7 +20,7 @@
   "include": [
     "models/**/*",
     "types/**/*",
-    "handlers/**/*",
+    "plans/**/*",
     "services/**/*"
   ],
   "exclude": [

@@ -1,8 +1,8 @@
 /**
- * TrustHandler - RPC-style interface for trust operations
+ * TrustPlan - RPC-style interface for trust operations
  *
  * Provides transport-agnostic access to trust functionality for:
- * - Electron IPC handlers
+ * - Electron IPC plans
  * - Web Workers
  * - React Native bridges
  */
@@ -72,14 +72,14 @@ export interface GetDeviceCredentialsResponse {
 }
 
 /**
- * TrustHandler - Transport-agnostic trust operations
+ * TrustPlan - Transport-agnostic trust operations
  *
  * Follows dependency injection pattern:
- * - Platforms create handler: new TrustHandler(trustModel)
- * - Handler methods are pure business logic
+ * - Platforms create plan: new TrustPlan(trustModel)
+ * - Plan methods are pure business logic
  * - No platform-specific code
  */
-export class TrustHandler {
+export class TrustPlan {
     constructor(private trustModel: TrustModel) {}
 
     /**
@@ -94,7 +94,7 @@ export class TrustHandler {
             );
             return { success: true };
         } catch (error) {
-            console.error('[TrustHandler] Error setting trust status:', error);
+            console.error('[TrustPlan] Error setting trust status:', error);
             return {
                 success: false,
                 error: error instanceof Error ? error.message : 'Unknown error'
@@ -110,7 +110,7 @@ export class TrustHandler {
             const status = this.trustModel.getTrustStatus(request.deviceId);
             return { status };
         } catch (error) {
-            console.error('[TrustHandler] Error getting trust status:', error);
+            console.error('[TrustPlan] Error getting trust status:', error);
             return {
                 error: error instanceof Error ? error.message : 'Unknown error'
             };
@@ -125,7 +125,7 @@ export class TrustHandler {
             const devices = this.trustModel.getTrustedDevices();
             return { devices };
         } catch (error) {
-            console.error('[TrustHandler] Error getting trusted devices:', error);
+            console.error('[TrustPlan] Error getting trusted devices:', error);
             return {
                 devices: [],
                 error: error instanceof Error ? error.message : 'Unknown error'
@@ -141,7 +141,7 @@ export class TrustHandler {
             const isValid = this.trustModel.verifyDeviceKey(request.deviceId, request.publicKey);
             return { isValid };
         } catch (error) {
-            console.error('[TrustHandler] Error verifying device key:', error);
+            console.error('[TrustPlan] Error verifying device key:', error);
             return {
                 isValid: false,
                 error: error instanceof Error ? error.message : 'Unknown error'
@@ -160,7 +160,7 @@ export class TrustHandler {
             );
             return { evaluation };
         } catch (error) {
-            console.error('[TrustHandler] Error evaluating trust:', error);
+            console.error('[TrustPlan] Error evaluating trust:', error);
             return {
                 error: error instanceof Error ? error.message : 'Unknown error'
             };
@@ -175,7 +175,7 @@ export class TrustHandler {
             const credentials = this.trustModel.getDeviceCredentials();
             return { credentials };
         } catch (error) {
-            console.error('[TrustHandler] Error getting device credentials:', error);
+            console.error('[TrustPlan] Error getting device credentials:', error);
             return {
                 error: error instanceof Error ? error.message : 'Unknown error'
             };
