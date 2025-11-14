@@ -15,8 +15,14 @@ export type TrustStatus = 'trusted' | 'untrusted' | 'pending' | 'revoked';
 
 /**
  * Trust level for app-to-app communication
+ *
+ * Levels:
+ * - self: Trust assigned to own devices (highest trust)
+ * - high: Manually verified contacts with strong authentication
+ * - medium: Contacts added via invitation (default for accepted invites)
+ * - low: Contacts with limited verification or indirect trust
  */
-export type TrustLevel = 'full' | 'limited' | 'temporary';
+export type TrustLevel = 'self' | 'high' | 'medium' | 'low';
 
 /**
  * TrustRelationship - Versioned object storing trust status for a person/device

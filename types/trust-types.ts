@@ -35,8 +35,14 @@ export interface TrustEntry {
 
 /**
  * Trust level for app-to-app communication
+ *
+ * Levels:
+ * - self: Trust assigned to own devices (highest trust)
+ * - high: Manually verified contacts with strong authentication
+ * - medium: Contacts added via invitation (default for accepted invites)
+ * - low: Contacts with limited verification or indirect trust
  */
-export type TrustLevel = 'full' | 'limited' | 'temporary';
+export type TrustLevel = 'self' | 'high' | 'medium' | 'low';
 
 /**
  * Trust evaluation result with confidence score
@@ -116,4 +122,30 @@ export interface TrustStorageAdapter {
     getItem(key: string): Promise<string | null>;
     setItem(key: string, value: string): Promise<void>;
     removeItem(key: string): Promise<void>;
+}
+
+/**
+ * Trust chain node for visualizing trust relationships
+ */
+export interface TrustChainNode {
+    personId: SHA256IdHash<Person>;
+    name: string;
+    trustLevel: TrustLevel;
+    establishedAt: Date;
+    establishedBy?: SHA256IdHash<Person>; // Who established this trust
+    transitiveFrom?: SHA256IdHash<Person>[]; // Transitive trust path
+    depth: number; // How many hops from root (self = 0)
+}
+
+/**
+ * Trust chain tree for hierarchical visualization
+ */
+export interface TrustChain {
+    root: TrustChainNode; // Starting point (usually self)
+    nodes: TrustChainNode[]; // All nodes in the trust chain
+    edges: Array<{
+        from: SHA256IdHash<Person>;
+        to: SHA256IdHash<Person>;
+        trustLevel: TrustLevel;
+    }>;
 }

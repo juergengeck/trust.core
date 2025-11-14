@@ -21,7 +21,9 @@
     "models/**/*",
     "types/**/*",
     "plans/**/*",
-    "services/**/*"
+    "services/**/*",
+    "recipes/**/*",
+    "../packages/one.core/@OneObjectInterfaces.d.ts"
   ],
   "exclude": [
     "node_modules",

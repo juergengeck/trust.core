@@ -14,7 +14,9 @@ import type {
     DeviceCredentials,
     TrustStatus,
     TrustEntry,
-    TrustEvaluation
+    TrustEvaluation,
+    TrustLevel,
+    TrustChain
 } from '../types/trust-types.js';
 
 /**
@@ -71,6 +73,37 @@ export interface GetDeviceCredentialsResponse {
     error?: string;
 }
 
+export interface SetTrustLevelRequest {
+    personId: SHA256IdHash<Person>;
+    trustLevel: TrustLevel;
+    establishedBy?: SHA256IdHash<Person>; // Who established this trust (defaults to self)
+    reason?: string;
+}
+
+export interface SetTrustLevelResponse {
+    success: boolean;
+    error?: string;
+}
+
+export interface GetTrustLevelRequest {
+    personId: SHA256IdHash<Person>;
+}
+
+export interface GetTrustLevelResponse {
+    trustLevel?: TrustLevel;
+    error?: string;
+}
+
+export interface GetTrustChainRequest {
+    personId: SHA256IdHash<Person>;
+    maxDepth?: number; // Maximum depth to traverse (default: 3)
+}
+
+export interface GetTrustChainResponse {
+    chain?: TrustChain;
+    error?: string;
+}
+
 /**
  * TrustPlan - Transport-agnostic trust operations
  *
@@ -107,7 +140,7 @@ export class TrustPlan {
      */
     async getTrustStatus(request: GetTrustStatusRequest): Promise<GetTrustStatusResponse> {
         try {
-            const status = this.trustModel.getTrustStatus(request.deviceId);
+            const status = await this.trustModel.getTrustStatus(request.deviceId);
             return { status };
         } catch (error) {
             console.error('[TrustPlan] Error getting trust status:', error);
@@ -122,7 +155,7 @@ export class TrustPlan {
      */
     async getTrustedDevices(): Promise<GetTrustedDevicesResponse> {
         try {
-            const devices = this.trustModel.getTrustedDevices();
+            const devices = await this.trustModel.getTrustedDevices();
             return { devices };
         } catch (error) {
             console.error('[TrustPlan] Error getting trusted devices:', error);
@@ -138,7 +171,7 @@ export class TrustPlan {
      */
     async verifyDeviceKey(request: VerifyDeviceKeyRequest): Promise<VerifyDeviceKeyResponse> {
         try {
-            const isValid = this.trustModel.verifyDeviceKey(request.deviceId, request.publicKey);
+            const isValid = await this.trustModel.verifyDeviceKey(request.deviceId, request.publicKey);
             return { isValid };
         } catch (error) {
             console.error('[TrustPlan] Error verifying device key:', error);
@@ -176,6 +209,61 @@ export class TrustPlan {
             return { credentials };
         } catch (error) {
             console.error('[TrustPlan] Error getting device credentials:', error);
+            return {
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    }
+
+    /**
+     * Set trust level for a person
+     * Used when accepting invitations, manual verification, etc.
+     */
+    async setTrustLevel(request: SetTrustLevelRequest): Promise<SetTrustLevelResponse> {
+        try {
+            await this.trustModel.setTrustLevel(
+                request.personId,
+                request.trustLevel,
+                request.establishedBy,
+                request.reason
+            );
+            return { success: true };
+        } catch (error) {
+            console.error('[TrustPlan] Error setting trust level:', error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    }
+
+    /**
+     * Get trust level for a person
+     */
+    async getTrustLevel(request: GetTrustLevelRequest): Promise<GetTrustLevelResponse> {
+        try {
+            const trustLevel = await this.trustModel.getTrustLevel(request.personId);
+            return { trustLevel };
+        } catch (error) {
+            console.error('[TrustPlan] Error getting trust level:', error);
+            return {
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    }
+
+    /**
+     * Get trust chain for a person (for chain of trust visualization)
+     */
+    async getTrustChain(request: GetTrustChainRequest): Promise<GetTrustChainResponse> {
+        try {
+            const chain = await this.trustModel.getTrustChain(
+                request.personId,
+                request.maxDepth || 3
+            );
+            return { chain };
+        } catch (error) {
+            console.error('[TrustPlan] Error getting trust chain:', error);
             return {
                 error: error instanceof Error ? error.message : 'Unknown error'
             };

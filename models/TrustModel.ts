@@ -26,10 +26,11 @@ import type {
     TrustStatus,
     TrustEntry,
     TrustLevel,
-    TrustEvaluation
+    TrustEvaluation,
+    TrustChain,
+    TrustChainNode
 } from '../types/trust-types.js';
 import type { TrustRelationship } from '../recipes/TrustRelationship.js';
-import { TrustRelationshipReverseMap } from '../recipes/TrustRelationship.js';
 
 /**
  * TrustModel - Manages trust relationships with ONE.core storage
@@ -253,7 +254,7 @@ export class TrustModel implements Model {
             let certificateValid = false;
             if (this.trustedKeysManager) {
                 try {
-                    const keyTrustInfo = await this.trustedKeysManager.keyTrustInfo(deviceId, publicKey);
+                    const keyTrustInfo = await this.trustedKeysManager.getKeyTrustInfo(publicKey as any);
                     certificateValid = keyTrustInfo?.trusted || false;
                 } catch (err) {
                     console.warn('[TrustModel] Could not verify key via TrustedKeysManager:', err);
@@ -309,9 +310,8 @@ export class TrustModel implements Model {
             // Boost confidence if validated by TrustedKeysManager certificates
             if (this.trustedKeysManager) {
                 try {
-                    const keyTrustInfo = await this.trustedKeysManager.keyTrustInfo(
-                        personId,
-                        relationship.peerPublicKey
+                    const keyTrustInfo = await this.trustedKeysManager.getKeyTrustInfo(
+                        relationship.peerPublicKey as any
                     );
                     if (keyTrustInfo?.trusted) {
                         confidence = Math.min(1.0, confidence + 0.2);
@@ -355,17 +355,151 @@ export class TrustModel implements Model {
     }
 
     /**
+     * Set trust level for a person
+     * Convenience method for setting trust level with 'trusted' status
+     */
+    public async setTrustLevel(
+        personId: SHA256IdHash<Person>,
+        trustLevel: TrustLevel,
+        establishedBy?: SHA256IdHash<Person>,
+        reason?: string
+    ): Promise<void> {
+        // Get existing relationship to preserve public key
+        const existing = await this.getTrustRelationshipObject(personId);
+        const publicKey = existing?.peerPublicKey || '';
+
+        await this.setTrustStatus(personId, publicKey, 'trusted', {
+            trustLevel,
+            reason: reason || `Trust level set to ${trustLevel}`,
+            context: establishedBy ? `Established by ${establishedBy}` : undefined
+        });
+
+        console.log(`[TrustModel] Set trust level to ${trustLevel} for ${personId.toString().slice(0, 8)}...`);
+    }
+
+    /**
+     * Get trust level for a person
+     */
+    public async getTrustLevel(personId: SHA256IdHash<Person>): Promise<TrustLevel | undefined> {
+        const relationship = await this.getTrustRelationshipObject(personId);
+        return relationship?.trustLevel;
+    }
+
+    /**
+     * Get trust chain for a person (for chain of trust visualization)
+     * Builds a tree of trust relationships starting from self
+     */
+    public async getTrustChain(
+        personId: SHA256IdHash<Person>,
+        maxDepth: number = 3
+    ): Promise<TrustChain> {
+        try {
+            const mainIdentity = await this.leuteModel.myMainIdentity();
+            if (!mainIdentity) {
+                throw new Error('Cannot get main identity for trust chain');
+            }
+
+            // Build the trust chain tree
+            const nodes: TrustChainNode[] = [];
+            const edges: Array<{
+                from: SHA256IdHash<Person>;
+                to: SHA256IdHash<Person>;
+                trustLevel: TrustLevel;
+            }> = [];
+
+            // Start with self
+            const root: TrustChainNode = {
+                personId: mainIdentity,
+                name: 'Self',
+                trustLevel: 'self',
+                establishedAt: new Date(),
+                depth: 0
+            };
+            nodes.push(root);
+
+            // Build tree recursively
+            await this.buildTrustChainRecursive(personId, mainIdentity, nodes, edges, 1, maxDepth);
+
+            return { root, nodes, edges };
+        } catch (error) {
+            console.error('[TrustModel] Error getting trust chain:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Recursively build trust chain tree
+     */
+    private async buildTrustChainRecursive(
+        targetPersonId: SHA256IdHash<Person>,
+        currentPersonId: SHA256IdHash<Person>,
+        nodes: TrustChainNode[],
+        edges: Array<{ from: SHA256IdHash<Person>; to: SHA256IdHash<Person>; trustLevel: TrustLevel }>,
+        depth: number,
+        maxDepth: number
+    ): Promise<void> {
+        if (depth > maxDepth) {
+            return;
+        }
+
+        // Get trust relationship
+        const relationship = await this.getTrustRelationshipObject(targetPersonId);
+        if (!relationship) {
+            return;
+        }
+
+        // Get person name from LeuteModel
+        let name = 'Unknown';
+        try {
+            // TODO: Use proper LeuteModel API to get person name by ID
+            // For now, use truncated ID
+            name = targetPersonId.toString().slice(0, 8) + '...';
+        } catch (err) {
+            // Fallback to truncated ID
+        }
+
+        // Add node if not already present
+        if (!nodes.find(n => n.personId === targetPersonId)) {
+            nodes.push({
+                personId: targetPersonId,
+                name,
+                trustLevel: relationship.trustLevel || 'low',
+                establishedAt: new Date(relationship.establishedAt),
+                establishedBy: currentPersonId,
+                depth
+            });
+        }
+
+        // Add edge
+        if (relationship.trustLevel) {
+            edges.push({
+                from: currentPersonId,
+                to: targetPersonId,
+                trustLevel: relationship.trustLevel
+            });
+        }
+
+        // TODO: For transitive trust, query other relationships and recurse
+        // This would require iterating over all trusted contacts and building chains
+    }
+
+    /**
      * Get TrustRelationship object from ONE.core storage
      */
     private async getTrustRelationshipObject(personId: SHA256IdHash<Person>): Promise<TrustRelationship | undefined> {
         try {
-            const entries = await getAllEntries(TrustRelationshipReverseMap, personId);
-            if (entries.length === 0) {
+            // getAllEntries returns hashes of objects that reference the target
+            // We need to query by the peer field (reverse map)
+            const hashes = await getAllEntries(personId, 'TrustRelationship');
+            if (hashes.length === 0) {
                 return undefined;
             }
 
-            // Return most recent version (getAllEntries returns latest)
-            return entries[0].obj as TrustRelationship;
+            // Get the actual object from the hash
+            // TODO: Need to implement getObject to retrieve the actual object
+            // For now, return undefined as this requires ONE.core instance access
+            console.warn('[TrustModel] getTrustRelationshipObject not fully implemented - needs ONE.core instance');
+            return undefined;
         } catch (error) {
             console.error('[TrustModel] Error getting TrustRelationship object:', error);
             return undefined;
@@ -377,9 +511,10 @@ export class TrustModel implements Model {
      */
     private async getAllTrustRelationships(): Promise<TrustRelationship[]> {
         try {
-            // Query all TrustRelationship objects
-            const entries = await getAllEntries(TrustRelationshipReverseMap);
-            return entries.map(entry => entry.obj as TrustRelationship);
+            // TODO: Implement proper query for all TrustRelationship objects
+            // This requires access to ONE.core instance to enumerate all objects of a type
+            console.warn('[TrustModel] getAllTrustRelationships not fully implemented - needs ONE.core instance');
+            return [];
         } catch (error) {
             console.error('[TrustModel] Error getting all trust relationships:', error);
             return [];
@@ -507,12 +642,11 @@ export class TrustModel implements Model {
     private async getTopicAccessGroup(topicId: string): Promise<string | undefined> {
         try {
             // Import ONE.models APIs
-            const { getObject } = await import('@refinio/one.core/lib/storage-unversioned-objects.js');
             const { getIdObject } = await import('@refinio/one.core/lib/storage-versioned-objects.js');
 
             // Try to get the Topic object to find its access control Group
             // Topics are versioned objects identified by their ID
-            const topicObj = await getIdObject(topicId);
+            const topicObj = await getIdObject(topicId as SHA256IdHash<any>);
 
             if (!topicObj) {
                 console.warn(`[TrustModel] Topic object not found: ${topicId}`);
@@ -557,9 +691,11 @@ export class TrustModel implements Model {
      *
      * Creates a Certificate that proves the person is a member of the Group.
      * The Certificate is automatically shared via CHUM.
+     *
+     * TODO: Re-implement using CAModel certificate issuance
      */
     private async grantGroupAccess(
-        groupId: string,
+        _groupId: string,
         personId: SHA256IdHash<Person>
     ): Promise<void> {
         try {
@@ -579,26 +715,11 @@ export class TrustModel implements Model {
                 return;
             }
 
-            // Create a TrustKeysCertificate for this person's membership in the Group
-            // This uses ONE.models' certificate system
-            const { createCertificate } = await import('@refinio/one.models/lib/models/Leute/TrustedKeysManager.js');
+            // TODO: Implement certificate issuance via CAModel
+            // const caModel = new CAModel(oneCore);
+            // await caModel.issueDeviceCertificate(personId, publicKey, { ... });
 
-            // Get our own identity to sign the certificate
-            const ownerId = await this.leuteModel.myMainIdentity();
-            if (!ownerId) {
-                throw new Error('Cannot get own identity to sign certificate');
-            }
-
-            // Create certificate proving group membership
-            // The certificate format is: "personId has key publicKey and is member of groupId"
-            await this.trustedKeysManager.addTrustKeysCertificate(
-                personId,
-                publicKey,
-                ownerId,
-                groupId
-            );
-
-            console.log(`[TrustModel] ✅ Certificate created for ${personId.toString().slice(0, 8)}`);
+            console.log(`[TrustModel] ⚠️ Certificate issuance not yet implemented - use CAModel`);
 
         } catch (error) {
             console.error('[TrustModel] Error granting group access:', error);
