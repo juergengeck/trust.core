@@ -20,11 +20,13 @@
   "private": true,
   "peerDependencies": {
     "@refinio/one.core": "^0.6.1-beta-3",
-    "@refinio/one.models": "^14.1.0-beta-5"
+    "@refinio/one.models": "^14.1.0-beta-5",
+    "@refinio/api": "*"
   },
   "devDependencies": {
     "@refinio/one.core": "file:../packages/one.core",
     "@refinio/one.models": "file:../packages/one.models",
+    "@refinio/api": "file:../refinio.api",
     "@types/chai-as-promised": "^8.0.2",
     "@types/passport-http": "^0.3.11",
     "@types/qrcode": "^1.5.6",

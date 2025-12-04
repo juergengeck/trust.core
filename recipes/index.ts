@@ -5,33 +5,45 @@
  */
 
 // TrustRelationship
-export {
+export type {
     TrustRelationship,
     TrustStatus,
-    TrustLevel,
+    TrustLevel
+} from './TrustRelationship.js';
+
+export {
     TrustRelationshipRecipe,
     TrustRelationshipReverseMap
 } from './TrustRelationship.js';
 
 // GroupAttestation
+export type {
+    GroupAttestation
+} from './GroupAttestation.js';
+
 export {
-    GroupAttestation,
     GroupAttestationRecipe,
     GroupAttestationReverseMap
 } from './GroupAttestation.js';
 
 // CertificateRegistry
+export type {
+    CertificateRegistry
+} from './CertificateRegistry.js';
+
 export {
-    CertificateRegistry,
     CertificateRegistryRecipe,
     CertificateRegistryReverseMap
 } from './CertificateRegistry.js';
 
 // Certificate (Base)
-export {
+export type {
     Certificate,
     CertificateType,
-    CertificateStatus,
+    CertificateStatus
+} from './Certificate.js';
+
+export {
     CertificateRecipe,
     CertificateReverseMap
 } from './Certificate.js';
@@ -42,24 +54,33 @@ export {
 export type { TrustKeysCertificate } from './TrustKeysCertificate.js';
 
 // VerifiableCredential
+export type {
+    VerifiableCredential
+} from './VerifiableCredential.js';
+
 export {
-    VerifiableCredential,
     VerifiableCredentialRecipe,
     VerifiableCredentialReverseMap
 } from './VerifiableCredential.js';
 
 // SubscriptionCertificate
-export {
+export type {
     SubscriptionCertificate,
     SubscriptionTier,
-    SubscriptionStatus,
+    SubscriptionStatus
+} from './SubscriptionCertificate.js';
+
+export {
     SubscriptionCertificateRecipe,
     SubscriptionCertificateReverseMap
 } from './SubscriptionCertificate.js';
 
 // SubscriptionBalance
+export type {
+    SubscriptionBalance
+} from './SubscriptionBalance.js';
+
 export {
-    SubscriptionBalance,
     SubscriptionBalanceRecipe,
     SubscriptionBalanceReverseMap
 } from './SubscriptionBalance.js';

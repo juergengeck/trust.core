@@ -175,6 +175,7 @@ export class TrustModel implements Model {
             const trustRelationship: TrustRelationship = {
                 $type$: 'TrustRelationship',
                 $version$: 'v1',
+                id: deviceId, // Use deviceId as unique identifier for this relationship
                 peer: deviceId,
                 peerPublicKey: publicKey,
                 status,

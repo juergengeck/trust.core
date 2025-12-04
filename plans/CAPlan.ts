@@ -3,13 +3,15 @@
  *
  * RPC-style plan for certificate authority operations.
  * Provides transport-agnostic interface for certificate management.
+ * Integrates with StoryFactory for journal/audit trail visibility.
  */
 
 import type { SHA256Hash, SHA256IdHash } from '@refinio/one.core/lib/util/type-checks.js';
-import type { Person } from '@refinio/one.core/lib/recipes.js';
+import type { Person, OneObjectTypes } from '@refinio/one.core/lib/recipes.js';
 import type { Certificate, CertificateType } from '../recipes/Certificate.js';
 import type { TrustKeysCertificate } from '../recipes/TrustKeysCertificate.js';
 import type { VerifiableCredential } from '../recipes/VerifiableCredential.js';
+import type { StoryFactory, ExecutionMetadata, ExecutionResult, OperationResult, Plan } from '@refinio/api/plan-system';
 import { CAModel, CertificateIssueOptions } from '../models/CAModel.js';
 import { VCBridge } from '../models/VCBridge.js';
 
@@ -115,12 +117,52 @@ export interface ImportVCResponse {
  *
  * Transport-agnostic certificate authority operations.
  * Designed for use with IPC, HTTP, or other RPC mechanisms.
+ * Integrates with StoryFactory for journal/audit trail visibility.
  */
 export class CAPlan {
+    static readonly PLAN_ID = 'CAPlan';
+    static readonly PLAN_NAME = 'Certificate Authority Plan';
+    static readonly PLAN_DESCRIPTION = 'Manages certificate issuance, extension, and revocation';
+    static readonly PLAN_DOMAIN = 'trust';
+
     private caModel: CAModel;
+    private storyFactory: StoryFactory | null = null;
+    private planIdHash: SHA256IdHash<Plan> | null = null;
 
     constructor(caModel: CAModel) {
         this.caModel = caModel;
+    }
+
+    /**
+     * Set the StoryFactory and register the Plan ONE object.
+     */
+    async setStoryFactory(factory: StoryFactory): Promise<void> {
+        this.storyFactory = factory;
+        this.planIdHash = await factory.registerPlan({
+            id: CAPlan.PLAN_ID,
+            name: CAPlan.PLAN_NAME,
+            description: CAPlan.PLAN_DESCRIPTION,
+            domain: CAPlan.PLAN_DOMAIN,
+            demandPatterns: [
+                { keywords: ['certificate', 'trust', 'identity'] },
+                { keywords: ['device', 'keys', 'attestation'] }
+            ],
+            supplyPatterns: [
+                { keywords: ['certificate', 'issued', 'valid'] },
+                { keywords: ['trust', 'verified', 'attested'] }
+            ]
+        });
+        console.log(`[CAPlan] Registered Plan with hash: ${this.planIdHash.substring(0, 8)}...`);
+    }
+
+    /**
+     * Get the Plan's real SHA256IdHash (must be initialized first)
+     */
+    getPlanIdHash(): SHA256IdHash<Plan> {
+        if (!this.planIdHash) {
+            throw new Error('[CAPlan] Plan not registered - call setStoryFactory first');
+        }
+        return this.planIdHash;
     }
 
     /**
@@ -128,7 +170,7 @@ export class CAPlan {
      */
     async issueCertificate(
         request: IssueCertificateRequest
-    ): Promise<IssueCertificateResponse> {
+    ): Promise<IssueCertificateResponse | ExecutionResult<IssueCertificateResponse>> {
         const options: CertificateIssueOptions = {
             certificateType: request.certificateType,
             subject: request.subject,
@@ -139,14 +181,52 @@ export class CAPlan {
             claims: request.claims
         };
 
-        const certificateHash = await this.caModel.issueCertificate(options);
-        const certificate = await this.caModel.getCertificate(
-            options.certificateType + ':' + options.subject
+        // If no StoryFactory, fall back to direct operation (no Assembly)
+        if (!this.storyFactory) {
+            const certificateHash = await this.caModel.issueCertificate(options);
+            const certificate = await this.caModel.getCertificate(
+                options.certificateType + ':' + options.subject
+            );
+            return {
+                certificateHash,
+                certificateId: certificate?.id || ''
+            };
+        }
+
+        // Story metadata for journal visibility
+        const subjectStr = String(request.subject).substring(0, 8);
+        const metadata: ExecutionMetadata = {
+            title: `Certificate "${request.certificateType}" issued for ${subjectStr}`,
+            planId: this.getPlanIdHash(),
+            planTypeName: CAPlan.PLAN_ID,
+            owner: request.subject as SHA256IdHash<Person>,
+            instanceVersion: `instance-${Date.now()}`
+        };
+
+        // Use wrapExecution to create Story atomically
+        const result = await this.storyFactory.wrapExecution(
+            metadata,
+            async (): Promise<OperationResult<IssueCertificateResponse>> => {
+                const certificateHash = await this.caModel.issueCertificate(options);
+                const certificate = await this.caModel.getCertificate(
+                    options.certificateType + ':' + options.subject
+                );
+                return {
+                    result: {
+                        certificateHash,
+                        certificateId: certificate?.id || ''
+                    },
+                    productHash: certificateHash as unknown as SHA256Hash<OneObjectTypes>
+                };
+            }
         );
 
+        console.log(`[CAPlan] ✅ Issued certificate with Story: ${result.storyId?.toString().substring(0, 8)}...`);
+
         return {
-            certificateHash,
-            certificateId: certificate?.id || ''
+            result: result.result,
+            storyId: result.storyId,
+            assemblyId: result.assemblyId
         };
     }
 
@@ -155,26 +235,73 @@ export class CAPlan {
      */
     async issueDeviceCertificate(
         request: IssueDeviceCertificateRequest
-    ): Promise<IssueDeviceCertificateResponse> {
-        const certificateHash = await this.caModel.issueDeviceCertificate(
-            request.subject,
-            request.subjectPublicKey,
-            {
-                trustLevel: request.trustLevel,
-                permissions: request.permissions,
-                validityDays: request.validityDays,
-                trustReason: request.trustReason,
-                verificationMethod: request.verificationMethod
+    ): Promise<IssueDeviceCertificateResponse | ExecutionResult<IssueDeviceCertificateResponse>> {
+        // If no StoryFactory, fall back to direct operation
+        if (!this.storyFactory) {
+            const certificateHash = await this.caModel.issueDeviceCertificate(
+                request.subject,
+                request.subjectPublicKey,
+                {
+                    trustLevel: request.trustLevel,
+                    permissions: request.permissions,
+                    validityDays: request.validityDays,
+                    trustReason: request.trustReason,
+                    verificationMethod: request.verificationMethod
+                }
+            );
+            const certificate = await this.caModel.getCertificate(
+                `cert:device:${request.subject}`
+            );
+            return {
+                certificateHash,
+                certificateId: certificate?.id || ''
+            };
+        }
+
+        // Story metadata for journal visibility
+        const subjectStr = request.subject.substring(0, 8);
+        const trustLevel = request.trustLevel || 'full';
+        const metadata: ExecutionMetadata = {
+            title: `Device certificate issued (${trustLevel}) for ${subjectStr}`,
+            planId: this.getPlanIdHash(),
+            planTypeName: CAPlan.PLAN_ID,
+            owner: request.subject,
+            instanceVersion: `instance-${Date.now()}`
+        };
+
+        const result = await this.storyFactory.wrapExecution(
+            metadata,
+            async (): Promise<OperationResult<IssueDeviceCertificateResponse>> => {
+                const certificateHash = await this.caModel.issueDeviceCertificate(
+                    request.subject,
+                    request.subjectPublicKey,
+                    {
+                        trustLevel: request.trustLevel,
+                        permissions: request.permissions,
+                        validityDays: request.validityDays,
+                        trustReason: request.trustReason,
+                        verificationMethod: request.verificationMethod
+                    }
+                );
+                const certificate = await this.caModel.getCertificate(
+                    `cert:device:${request.subject}`
+                );
+                return {
+                    result: {
+                        certificateHash,
+                        certificateId: certificate?.id || ''
+                    },
+                    productHash: certificateHash as unknown as SHA256Hash<OneObjectTypes>
+                };
             }
         );
 
-        const certificate = await this.caModel.getCertificate(
-            `cert:device:${request.subject}`
-        );
+        console.log(`[CAPlan] ✅ Issued device certificate with Story: ${result.storyId?.toString().substring(0, 8)}...`);
 
         return {
-            certificateHash,
-            certificateId: certificate?.id || ''
+            result: result.result,
+            storyId: result.storyId,
+            assemblyId: result.assemblyId
         };
     }
 
@@ -183,17 +310,54 @@ export class CAPlan {
      */
     async extendCertificate(
         request: ExtendCertificateRequest
-    ): Promise<ExtendCertificateResponse> {
-        const certificateHash = await this.caModel.extendCertificate({
-            certificateId: request.certificateId,
-            additionalDays: request.additionalDays
-        });
+    ): Promise<ExtendCertificateResponse | ExecutionResult<ExtendCertificateResponse>> {
+        // If no StoryFactory, fall back to direct operation
+        if (!this.storyFactory) {
+            const certificateHash = await this.caModel.extendCertificate({
+                certificateId: request.certificateId,
+                additionalDays: request.additionalDays
+            });
+            const certificate = await this.caModel.getCertificate(request.certificateId);
+            return {
+                certificateHash,
+                newValidUntil: certificate?.validUntil || 0
+            };
+        }
 
-        const certificate = await this.caModel.getCertificate(request.certificateId);
+        // Story metadata for journal visibility
+        const certIdShort = request.certificateId.substring(0, 16);
+        const metadata: ExecutionMetadata = {
+            title: `Certificate extended by ${request.additionalDays} days: ${certIdShort}`,
+            planId: this.getPlanIdHash(),
+            planTypeName: CAPlan.PLAN_ID,
+            owner: undefined as any,  // Certificate owner not available from certificateId
+            instanceVersion: `instance-${Date.now()}`
+        };
+
+        const result = await this.storyFactory.wrapExecution(
+            metadata,
+            async (): Promise<OperationResult<ExtendCertificateResponse>> => {
+                const certificateHash = await this.caModel.extendCertificate({
+                    certificateId: request.certificateId,
+                    additionalDays: request.additionalDays
+                });
+                const certificate = await this.caModel.getCertificate(request.certificateId);
+                return {
+                    result: {
+                        certificateHash,
+                        newValidUntil: certificate?.validUntil || 0
+                    },
+                    productHash: certificateHash as unknown as SHA256Hash<OneObjectTypes>
+                };
+            }
+        );
+
+        console.log(`[CAPlan] ✅ Extended certificate with Story: ${result.storyId?.toString().substring(0, 8)}...`);
 
         return {
-            certificateHash,
-            newValidUntil: certificate?.validUntil || 0
+            result: result.result,
+            storyId: result.storyId,
+            assemblyId: result.assemblyId
         };
     }
 
@@ -202,15 +366,53 @@ export class CAPlan {
      */
     async revokeCertificate(
         request: RevokeCertificateRequest
-    ): Promise<RevokeCertificateResponse> {
-        const certificateHash = await this.caModel.revokeCertificate({
-            certificateId: request.certificateId,
-            reason: request.reason
-        });
+    ): Promise<RevokeCertificateResponse | ExecutionResult<RevokeCertificateResponse>> {
+        // If no StoryFactory, fall back to direct operation
+        if (!this.storyFactory) {
+            const certificateHash = await this.caModel.revokeCertificate({
+                certificateId: request.certificateId,
+                reason: request.reason
+            });
+            return {
+                certificateHash,
+                revokedAt: Date.now()
+            };
+        }
+
+        // Story metadata for journal visibility
+        const certIdShort = request.certificateId.substring(0, 16);
+        const reasonText = request.reason ? `: ${request.reason}` : '';
+        const metadata: ExecutionMetadata = {
+            title: `Certificate revoked: ${certIdShort}${reasonText}`,
+            planId: this.getPlanIdHash(),
+            planTypeName: CAPlan.PLAN_ID,
+            owner: undefined as any,  // Certificate owner not available from certificateId
+            instanceVersion: `instance-${Date.now()}`
+        };
+
+        const result = await this.storyFactory.wrapExecution(
+            metadata,
+            async (): Promise<OperationResult<RevokeCertificateResponse>> => {
+                const certificateHash = await this.caModel.revokeCertificate({
+                    certificateId: request.certificateId,
+                    reason: request.reason
+                });
+                return {
+                    result: {
+                        certificateHash,
+                        revokedAt: Date.now()
+                    },
+                    productHash: certificateHash as unknown as SHA256Hash<OneObjectTypes>
+                };
+            }
+        );
+
+        console.log(`[CAPlan] ✅ Revoked certificate with Story: ${result.storyId?.toString().substring(0, 8)}...`);
 
         return {
-            certificateHash,
-            revokedAt: Date.now()
+            result: result.result,
+            storyId: result.storyId,
+            assemblyId: result.assemblyId
         };
     }
 

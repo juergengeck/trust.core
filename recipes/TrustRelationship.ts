@@ -42,6 +42,9 @@ export interface TrustRelationship {
     $type$: 'TrustRelationship';
     $version$: 'v1';
 
+    // Unique identifier for this trust relationship
+    id: string;
+
     // Subject of trust (who is being trusted)
     peer: SHA256IdHash<Person>;
     peerPublicKey: string;  // Ed25519 public key for verification
@@ -86,6 +89,15 @@ export const TrustRelationshipRecipe: Recipe = {
     $type$: 'Recipe',
     name: 'TrustRelationship',
     rule: [
+        {
+            itemprop: '$version$',
+            itemtype: { type: 'string' }
+        },
+        {
+            itemprop: 'id',
+            itemtype: { type: 'string' },
+            isId: true
+        },
         {
             itemprop: 'peer',
             itemtype: { type: 'referenceToId', allowedTypes: new Set(['Person']) }

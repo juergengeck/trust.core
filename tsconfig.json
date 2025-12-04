@@ -1,12 +1,13 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ES2022",
+    "module": "ESNext",
     "lib": ["ES2022"],
-    "moduleResolution": "node",
+    "moduleResolution": "Bundler",
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "strict": true,
+    "strict": false,
+    "strictNullChecks": false,
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
@@ -15,7 +16,8 @@
     "forceConsistentCasingInFileNames": true,
     "paths": {
       "@refinio/*": ["./packages/*"]
-    }
+    },
+    "typeRoots": ["../../node_modules/@types", "./node_modules/@types"]
   },
   "include": [
     "models/**/*",
@@ -23,12 +25,12 @@
     "plans/**/*",
     "services/**/*",
     "recipes/**/*",
-    "../packages/one.core/@OneObjectInterfaces.d.ts"
-    "../one.core/@OneObjectInterfaces.d.ts"
+    "@OneObjectInterfaces.d.ts",
+    "../one.core/@OneObjectInterfaces.d.ts",
+    "../one.models/@OneObjectInterfaces.d.ts"
   ],
   "exclude": [
     "node_modules",
-    "**/*.js",
-    "**/*.d.ts"
+    "**/*.js"
   ]
 }
