@@ -8,11 +8,29 @@
     "watch": "tsc --watch",
     "clean": "find . -name '*.js' -not -path './node_modules/*' -not -path './packages/*' -delete"
   },
+  "files": [
+    "models/**/*.js",
+    "models/**/*.d.ts",
+    "types/**/*.js",
+    "types/**/*.d.ts",
+    "plans/**/*.js",
+    "plans/**/*.d.ts",
+    "services/**/*.js",
+    "services/**/*.d.ts",
+    "recipes/**/*.js",
+    "recipes/**/*.d.ts",
+    "*.ts"
+  ],
   "exports": {
+    "./models": "./models/index.js",
     "./models/*": "./models/*",
+    "./types": "./types/index.js",
     "./types/*": "./types/*",
+    "./plans": "./plans/index.js",
     "./plans/*": "./plans/*",
+    "./services": "./services/index.js",
     "./services/*": "./services/*",
+    "./recipes": "./recipes/index.js",
     "./recipes/*": "./recipes/*"
   },
   "author": "lama.one Team",
@@ -24,9 +42,9 @@
     "@refinio/api": "*"
   },
   "devDependencies": {
-    "@refinio/one.core": "file:../packages/one.core",
-    "@refinio/one.models": "file:../packages/one.models",
-    "@refinio/api": "file:../refinio.api",
+    "@refinio/one.core": "*",
+    "@refinio/one.models": "*",
+    "@refinio/api": "*",
     "@types/chai-as-promised": "^8.0.2",
     "@types/passport-http": "^0.3.11",
     "@types/qrcode": "^1.5.6",
