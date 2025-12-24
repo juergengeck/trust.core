@@ -85,6 +85,26 @@ export {
     SubscriptionBalanceReverseMap
 } from './SubscriptionBalance.js';
 
+// ProfileResponse
+export type {
+    ProfileResponse
+} from './ProfileResponse.js';
+
+export {
+    ProfileResponseRecipe,
+    ProfileResponseReverseMap
+} from './ProfileResponse.js';
+
+// ConnectionAckCertificate
+export type {
+    ConnectionAckCertificate
+} from './ConnectionAckCertificate.js';
+
+export {
+    ConnectionAckCertificateRecipe,
+    ConnectionAckCertificateReverseMap
+} from './ConnectionAckCertificate.js';
+
 // Import for convenience arrays
 import { TrustRelationshipRecipe, TrustRelationshipReverseMap } from './TrustRelationship.js';
 import { GroupAttestationRecipe, GroupAttestationReverseMap } from './GroupAttestation.js';
@@ -94,6 +114,8 @@ import { CertificateRecipe, CertificateReverseMap } from './Certificate.js';
 import { VerifiableCredentialRecipe, VerifiableCredentialReverseMap } from './VerifiableCredential.js';
 import { SubscriptionCertificateRecipe, SubscriptionCertificateReverseMap } from './SubscriptionCertificate.js';
 import { SubscriptionBalanceRecipe, SubscriptionBalanceReverseMap } from './SubscriptionBalance.js';
+import { ProfileResponseRecipe, ProfileResponseReverseMap } from './ProfileResponse.js';
+import { ConnectionAckCertificateRecipe, ConnectionAckCertificateReverseMap } from './ConnectionAckCertificate.js';
 
 /**
  * All recipes for batch registration
@@ -110,7 +132,9 @@ export const AllRecipes = [
     // TrustKeysCertificateRecipe - REMOVED: Use ONE.models' version
     VerifiableCredentialRecipe,
     SubscriptionCertificateRecipe,
-    SubscriptionBalanceRecipe
+    SubscriptionBalanceRecipe,
+    ProfileResponseRecipe,
+    ConnectionAckCertificateRecipe
 ];
 
 /**
@@ -126,5 +150,7 @@ export const AllReverseMaps = [
     // TrustKeysCertificateReverseMap - REMOVED: Use ONE.models' version
     VerifiableCredentialReverseMap,
     SubscriptionCertificateReverseMap,
-    SubscriptionBalanceReverseMap
+    SubscriptionBalanceReverseMap,
+    ProfileResponseReverseMap,
+    ConnectionAckCertificateReverseMap
 ];
