@@ -7,7 +7,6 @@
 
 import { storeUnversionedObject } from '@refinio/one.core/lib/storage-unversioned-objects.js';
 import { storeVersionedObject } from '@refinio/one.core/lib/storage-versioned-objects.js';
-import { getObject } from '@refinio/one.core/lib/storage-base-common.js';
 import { createRandomNonce } from '@refinio/one.core/lib/crypto/encryption.js';
 import type { CryptoApi } from '@refinio/one.core/lib/crypto/CryptoApi.js';
 import type { SHA256Hash, SHA256IdHash } from '@refinio/one.core/lib/util/type-checks.js';
@@ -33,7 +32,7 @@ function toHex(bytes: Uint8Array): string {
 function fromHex(hex: string): Uint8Array {
     const bytes = new Uint8Array(hex.length / 2);
     for (let i = 0; i < hex.length; i += 2) {
-        bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+        bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
     }
     return bytes;
 }
