@@ -48,6 +48,7 @@ export interface CreateProfileResponseParams {
 export interface CreateConnectionAckParams {
     profileResponse: ProfileResponse;
     profileResponseHash: SHA256Hash<ProfileResponse>;
+    responderPublicKey: PublicKey;
     cryptoApi: CryptoApi;
     license: SHA256Hash<License>;
     validityDurationMs?: number;
@@ -55,7 +56,9 @@ export interface CreateConnectionAckParams {
 
 export class HandshakeService {
     /**
-     * Create a ProfileResponse with encrypted nonce
+     * Create a ProfileResponse with encrypted nonce.
+     * Called by the RESPONDER (the one who wants to connect to the challenger).
+     * Uses NaCl box encryption: shared secret derived from (responder's private key, challenger's public key).
      */
     async createProfileResponse(
         params: CreateProfileResponseParams
@@ -87,7 +90,9 @@ export class HandshakeService {
     }
 
     /**
-     * Verify and acknowledge a ProfileResponse by decrypting the nonce
+     * Verify and acknowledge a ProfileResponse by decrypting the nonce.
+     * Called by the CHALLENGER (the one who advertised their profile).
+     * Uses NaCl box decryption: shared secret derived from (challenger's private key, responder's public key).
      */
     async verifyAndAcknowledge(
         params: CreateConnectionAckParams
@@ -95,22 +100,19 @@ export class HandshakeService {
         const {
             profileResponse,
             profileResponseHash,
+            responderPublicKey,
             cryptoApi,
             license,
             validityDurationMs = 365 * 24 * 60 * 60 * 1000 // 1 year default
         } = params;
 
         try {
-            // Decrypt the nonce
+            // Decrypt the nonce using challenger's CryptoApi and responder's public key
+            // NaCl box: derives shared secret from (myPrivateKey, theirPublicKey)
             const encryptedNonce = fromHex(profileResponse.encryptedNonce);
-
-            // Get responder's public key to decrypt
-            // Note: This requires the responder's public key from their profile
-            // The caller should provide the appropriate crypto context
             const decryptedNonce = cryptoApi.decryptWithEmbeddedNonce(
                 encryptedNonce,
-                // The responder's public key - obtained from their profile
-                await this.getResponderPublicKey(profileResponse.responder)
+                responderPublicKey
             );
 
             const now = Date.now();
@@ -142,15 +144,6 @@ export class HandshakeService {
         }
     }
 
-    /**
-     * Get responder's public key from their profile/keys
-     * This is a placeholder - actual implementation depends on LeuteModel integration
-     */
-    private async getResponderPublicKey(responder: SHA256IdHash<Person>): Promise<PublicKey> {
-        // TODO: Integrate with LeuteModel to get the responder's public key
-        // For now, this throws - the caller should provide the key via CryptoApi context
-        throw new Error('getResponderPublicKey requires LeuteModel integration');
-    }
 }
 
 export const handshakeService = new HandshakeService();
