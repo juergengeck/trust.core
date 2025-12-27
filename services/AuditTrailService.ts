@@ -21,7 +21,9 @@ export type AuditEventType =
     | 'trust_established'
     | 'trust_revoked'
     | 'vc_exported'
-    | 'vc_imported';
+    | 'vc_imported'
+    | 'memory_imported'
+    | 'memory_exported';
 
 /**
  * Audit Event
