@@ -149,3 +149,27 @@ export interface TrustChain {
         trustLevel: TrustLevel;
     }>;
 }
+
+/**
+ * Paranoia level controls automatic trust behavior
+ *
+ * Higher levels require more explicit user confirmation:
+ * - 0: Trust implied on invite/group join (current default)
+ * - 1: Manual confirmation for each trust relationship
+ *
+ * Future stages (to be defined):
+ * - 2: Require re-verification of plan hashes before execution
+ * - 3: Require cryptographic attestation for all operations
+ */
+export type ParanoiaLevel = 0 | 1;  // Start simple, extend later
+
+/**
+ * Paranoia configuration for trust operations
+ */
+export interface ParanoiaConfig {
+    level: ParanoiaLevel;
+
+    // Per-operation overrides (future)
+    // groupJoin?: ParanoiaLevel;
+    // planExecution?: ParanoiaLevel;
+}
